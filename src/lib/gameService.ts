@@ -358,51 +358,27 @@ export async function triggerRematch(
     // Continue to fallback
   }
 
-  // Fallback: Check if both ready or start new match directly
+  // Immediately start new match for both players
   const nextStarter: PlayerSymbol = room.starter === 'X' ? 'O' : 'X';
-  const otherReady = isP1 ? room.p2_rematch_ready : room.p1_rematch_ready;
-
-  if (otherReady) {
-    // Both agreed: Reset board!
-    const { data: updated, error } = await supabase
-      .from('rooms')
-      .update({
-        board: ['', '', '', '', '', '', '', '', ''],
-        starter: nextStarter,
-        current_turn: nextStarter,
-        winner: null,
-        winning_line: null,
-        match_id: room.match_id + 1,
-        p1_rematch_ready: false,
-        p2_rematch_ready: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', room.id)
-      .select()
-      .single();
-
-    if (error || !updated) {
-      return { success: false, error: 'Failed to reset match.' };
-    }
-    return { success: true, room: updated as RoomRecord };
-  } else {
-    // Mark this player ready
-    const updates: Partial<RoomRecord> = {
-      p1_rematch_ready: isP1 ? true : room.p1_rematch_ready,
-      p2_rematch_ready: isP2 ? true : room.p2_rematch_ready,
+  const { data: updated, error } = await supabase
+    .from('rooms')
+    .update({
+      board: ['', '', '', '', '', '', '', '', ''],
+      starter: nextStarter,
+      current_turn: nextStarter,
+      winner: null,
+      winning_line: null,
+      match_id: room.match_id + 1,
+      p1_rematch_ready: false,
+      p2_rematch_ready: false,
       updated_at: new Date().toISOString(),
-    };
+    })
+    .eq('id', room.id)
+    .select()
+    .single();
 
-    const { data: updated, error } = await supabase
-      .from('rooms')
-      .update(updates)
-      .eq('id', room.id)
-      .select()
-      .single();
-
-    if (error || !updated) {
-      return { success: false, error: 'Failed to update rematch ready status.' };
-    }
-    return { success: true, room: updated as RoomRecord };
+  if (error || !updated) {
+    return { success: false, error: error?.message || 'Failed to reset match.' };
   }
+  return { success: true, room: updated as RoomRecord };
 }

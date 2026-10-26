@@ -623,37 +623,28 @@ export function useGameRoom(): UseGameRoomReturn {
       }
     }
 
-    // 2. Rematch via WebRTC PeerJS P2P
+    // 2. Rematch via WebRTC PeerJS P2P (Instant new round for both players)
     if (peerConnRef.current && peerConnRef.current.open) {
-      const isP1 = account.username === 'Ithal';
       const nextStarter: PlayerSymbol = room.starter === 'X' ? 'O' : 'X';
-      const otherReady = isP1 ? room.p2_rematch_ready : room.p1_rematch_ready;
-
-      let updatedRoom: RoomRecord;
-      if (otherReady) {
-        updatedRoom = {
-          ...room,
-          board: ['', '', '', '', '', '', '', '', ''],
-          starter: nextStarter,
-          current_turn: nextStarter,
-          winner: null,
-          winning_line: null,
-          match_id: room.match_id + 1,
-          p1_rematch_ready: false,
-          p2_rematch_ready: false,
-          updated_at: new Date().toISOString(),
-        };
-      } else {
-        updatedRoom = {
-          ...room,
-          p1_rematch_ready: isP1 ? true : room.p1_rematch_ready,
-          p2_rematch_ready: isP2 ? true : room.p2_rematch_ready,
-          updated_at: new Date().toISOString(),
-        };
-      }
+      const updatedRoom: RoomRecord = {
+        ...room,
+        board: ['', '', '', '', '', '', '', '', ''],
+        starter: nextStarter,
+        current_turn: nextStarter,
+        winner: null,
+        winning_line: null,
+        match_id: room.match_id + 1,
+        p1_rematch_ready: false,
+        p2_rematch_ready: false,
+        updated_at: new Date().toISOString(),
+      };
 
       handleRoomUpdate(updatedRoom);
       peerConnRef.current.send({ type: 'REMATCH', room: updatedRoom });
+
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.postMessage({ type: 'SYNC_STATE', room: updatedRoom });
+      }
       return true;
     }
 

@@ -466,23 +466,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         {room.winner && (
           <button
             onClick={handleRematchClick}
-            disabled={rematchLoading || !isFriendOnline || isCurrentPlayerReadyForRematch}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md ${
-              isCurrentPlayerReadyForRematch
-                ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800 cursor-default'
-                : 'bg-gradient-to-r from-cyan-500 to-fuchsia-600 hover:from-cyan-400 hover:to-fuchsia-500 text-white cursor-pointer active:scale-95'
-            }`}
+            disabled={rematchLoading || !isFriendOnline}
+            className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md bg-gradient-to-r from-cyan-500 to-fuchsia-600 hover:from-cyan-400 hover:to-fuchsia-500 text-white cursor-pointer active:scale-95"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${rematchLoading ? 'animate-spin' : ''}`} />
-            <span>
-              {isCurrentPlayerReadyForRematch
-                ? 'Ready (1/2)'
-                : isP1 && room.p2_rematch_ready
-                ? 'Accept Rematch'
-                : !isP1 && room.p1_rematch_ready
-                ? 'Accept Rematch'
-                : 'Play Again'}
-            </span>
+            <span>Play Again</span>
           </button>
         )}
       </div>
