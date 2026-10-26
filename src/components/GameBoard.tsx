@@ -215,9 +215,15 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                 </span>
               </div>
             ) : !isFriendOnline ? (
-              <div className="px-2.5 py-1 rounded-full bg-rose-950/60 border border-rose-800/80 text-rose-300 text-[11px] font-bold flex items-center gap-1.5 animate-pulse">
-                <WifiOff className="w-3 h-3 text-rose-400 shrink-0" />
-                <span className="truncate">{friendName} is offline</span>
+              <div className="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-300 text-[11px] font-bold flex items-center gap-1.5">
+                {connectionStatus === 'connecting' ? (
+                  <Loader2 className="w-3 h-3 text-cyan-400 animate-spin shrink-0" />
+                ) : (
+                  <WifiOff className="w-3 h-3 text-rose-400 shrink-0" />
+                )}
+                <span className="truncate">
+                  {connectionStatus === 'connecting' ? 'Connecting...' : `${friendName} offline`}
+                </span>
               </div>
             ) : (
               <div
@@ -269,14 +275,22 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         {/* Offline Overlay */}
         {!isFriendOnline && (
           <div className="absolute inset-0 z-20 bg-slate-950/85 backdrop-blur-xs rounded-3xl flex flex-col items-center justify-center p-4 text-center animate-fade-in">
-            <div className="w-10 h-10 rounded-full bg-rose-950/80 border border-rose-800/80 flex items-center justify-center mb-2">
-              <WifiOff className="w-5 h-5 text-rose-400 animate-pulse" />
+            <div className="w-11 h-11 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-2.5 shadow-lg">
+              {connectionStatus === 'connecting' ? (
+                <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+              ) : (
+                <WifiOff className="w-5 h-5 text-rose-400 animate-pulse" />
+              )}
             </div>
             <p className="text-sm font-bold text-white font-display">
-              {friendName} is offline
+              {connectionStatus === 'connecting'
+                ? `Connecting to ${friendName}...`
+                : `${friendName} is offline`}
             </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              The game is paused until {friendName} reconnects.
+            <p className="text-[11px] text-slate-400 mt-1 max-w-[260px] leading-relaxed">
+              {connectionStatus === 'connecting'
+                ? `Make sure ${friendName} opens this link on their mobile and logs in.`
+                : `The game is paused until ${friendName} reconnects.`}
             </p>
           </div>
         )}

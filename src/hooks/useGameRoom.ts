@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import Peer, { DataConnection } from 'peerjs';
+import { checkWinner } from '../lib/gameLogic';
 import {
   AuthenticatedAccount,
   ChatMessage,
@@ -69,6 +71,14 @@ export function useGameRoom(): UseGameRoomReturn {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const disconnectTimerRef = useRef<number | null>(null);
+  const peerRef = useRef<Peer | null>(null);
+  const peerConnRef = useRef<DataConnection | null>(null);
+  const p2pIntervalRef = useRef<number | null>(null);
+  const roomRef = useRef<RoomRecord | null>(room);
+
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
 
   const { isConfigured: isSupabaseConnected } = getSupabaseCredentials();
 
@@ -206,68 +216,110 @@ export function useGameRoom(): UseGameRoomReturn {
         }
       }
 
-      // 3. Fallback: SSE on Local Server backend (when running server.ts locally)
+      // 3. Fallback: WebRTC Peer-to-Peer Realtime (Direct phone-to-phone across internet)
       try {
-        const sseUrl = `/api/room/events?room=${targetRoomId}&playerId=${currentAccount.id}&name=${encodeURIComponent(currentAccount.displayName)}`;
-        const es = new EventSource(sseUrl);
-        eventSourceRef.current = es;
+        if (p2pIntervalRef.current) {
+          clearInterval(p2pIntervalRef.current);
+          p2pIntervalRef.current = null;
+        }
+        if (peerConnRef.current) {
+          try { peerConnRef.current.close(); } catch {}
+          peerConnRef.current = null;
+        }
+        if (peerRef.current) {
+          try { peerRef.current.destroy(); } catch {}
+          peerRef.current = null;
+        }
 
-        es.onopen = () => {
-          setConnectionStatus('connected');
-          setIsMeOnline(true);
-        };
+        const isP1 = currentAccount.username === 'Ithal';
+        const myPeerId = `lsxo_${targetRoomId}_${isP1 ? 'p1' : 'p2'}`;
+        const targetPeerId = `lsxo_${targetRoomId}_${isP1 ? 'p2' : 'p1'}`;
 
-        es.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'INIT') {
-              if (data.room) handleRoomUpdate(data.room);
-              if (Array.isArray(data.online)) {
-                const friendIsUp = data.online.includes(targetFriendId);
-                setIsFriendOnline(friendIsUp);
-              }
-              if (Array.isArray(data.messages)) {
-                setMessages(data.messages);
-              }
-            } else if (data.type === 'PRESENCE') {
-              if (Array.isArray(data.online)) {
-                const friendIsUp = data.online.includes(targetFriendId);
-                if (friendIsUp) {
-                  setIsFriendOnline(true);
-                  if (disconnectTimerRef.current) {
-                    clearTimeout(disconnectTimerRef.current);
-                    disconnectTimerRef.current = null;
-                  }
-                } else {
-                  if (!disconnectTimerRef.current) {
-                    disconnectTimerRef.current = window.setTimeout(() => {
-                      setIsFriendOnline(false);
-                      disconnectTimerRef.current = null;
-                    }, 1800);
-                  }
-                }
-              }
-            } else if (data.type === 'ROOM_UPDATE') {
-              if (data.room) handleRoomUpdate(data.room);
-            } else if (data.type === 'CHAT_MESSAGE' && data.message) {
+        const peer = new Peer(myPeerId, {
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' },
+            ],
+          },
+        });
+        peerRef.current = peer;
+
+        const setupPeerConnection = (conn: DataConnection) => {
+          peerConnRef.current = conn;
+
+          conn.on('open', () => {
+            setIsFriendOnline(true);
+            setIsMeOnline(true);
+            setConnectionStatus('connected');
+            if (disconnectTimerRef.current) {
+              clearTimeout(disconnectTimerRef.current);
+              disconnectTimerRef.current = null;
+            }
+            if (roomRef.current) {
+              conn.send({ type: 'SYNC_STATE', room: roomRef.current });
+            }
+          });
+
+          conn.on('data', (raw: unknown) => {
+            const data = raw as any;
+            if (!data || typeof data !== 'object') return;
+
+            if (data.type === 'MOVE' && data.room) {
+              handleRoomUpdate(data.room);
+            } else if (data.type === 'REMATCH' && data.room) {
+              handleRoomUpdate(data.room);
+            } else if (data.type === 'SYNC_STATE' && data.room) {
+              handleRoomUpdate(data.room);
+            } else if (data.type === 'CHAT' && data.message) {
               setMessages((prev) => {
                 if (prev.some((m) => m.id === data.message.id)) return prev;
                 return [...prev, data.message];
               });
-              if (data.message.senderId !== currentAccount.id) {
-                playMessageSound();
-              }
+              playMessageSound();
             }
-          } catch {
-            // ignore non-json keep-alive
-          }
+          });
+
+          conn.on('close', () => {
+            if (peerConnRef.current === conn) {
+              peerConnRef.current = null;
+              setIsFriendOnline(false);
+              setConnectionStatus('disconnected');
+            }
+          });
+
+          conn.on('error', () => {
+            if (peerConnRef.current === conn) {
+              peerConnRef.current = null;
+            }
+          });
         };
 
-        es.onerror = () => {
-          setConnectionStatus('reconnecting');
-        };
+        peer.on('open', () => {
+          setIsMeOnline(true);
+          if (!peerConnRef.current || !peerConnRef.current.open) {
+            const conn = peer.connect(targetPeerId, { reliable: true });
+            setupPeerConnection(conn);
+          }
+        });
+
+        peer.on('connection', (conn) => {
+          setupPeerConnection(conn);
+        });
+
+        p2pIntervalRef.current = window.setInterval(() => {
+          if (peer && !peer.destroyed && (!peerConnRef.current || !peerConnRef.current.open)) {
+            const conn = peer.connect(targetPeerId, { reliable: true });
+            setupPeerConnection(conn);
+          }
+        }, 2500);
+
+        peer.on('error', (err) => {
+          console.warn('P2P signaling notice:', err.type);
+        });
       } catch (err) {
-        console.error('SSE connection error:', err);
+        console.error('PeerJS init error:', err);
       }
 
       // 4. Same-browser tab fallback
@@ -422,6 +474,18 @@ export function useGameRoom(): UseGameRoomReturn {
       }
       broadcastChannelRef.current = null;
     }
+    if (p2pIntervalRef.current) {
+      clearInterval(p2pIntervalRef.current);
+      p2pIntervalRef.current = null;
+    }
+    if (peerConnRef.current) {
+      try { peerConnRef.current.close(); } catch {}
+      peerConnRef.current = null;
+    }
+    if (peerRef.current) {
+      try { peerRef.current.destroy(); } catch {}
+      peerRef.current = null;
+    }
     if (disconnectTimerRef.current) {
       clearTimeout(disconnectTimerRef.current);
       disconnectTimerRef.current = null;
@@ -474,7 +538,33 @@ export function useGameRoom(): UseGameRoomReturn {
       }
     }
 
-    // 2. Submit move to backend API fallback
+    // 2. Submit via WebRTC PeerJS P2P (Direct phone-to-phone)
+    if (peerConnRef.current && peerConnRef.current.open) {
+      const newBoard = [...room.board];
+      newBoard[cellIndex] = mySymbol;
+      const { winner, line } = checkWinner(newBoard);
+      const nextTurn: PlayerSymbol = mySymbol === 'X' ? 'O' : 'X';
+
+      const updatedRoom: RoomRecord = {
+        ...room,
+        board: newBoard,
+        current_turn: winner ? room.current_turn : nextTurn,
+        winner,
+        winning_line: line,
+        p1_score: winner === 'X' ? room.p1_score + 1 : room.p1_score,
+        p2_score: winner === 'O' ? room.p2_score + 1 : room.p2_score,
+        draws: winner === 'DRAW' ? room.draws + 1 : room.draws,
+        p1_rematch_ready: false,
+        p2_rematch_ready: false,
+        updated_at: new Date().toISOString(),
+      };
+
+      handleRoomUpdate(updatedRoom);
+      peerConnRef.current.send({ type: 'MOVE', room: updatedRoom });
+      return true;
+    }
+
+    // 3. Submit move to backend API fallback
     try {
       const res = await fetch('/api/room/move', {
         method: 'POST',
@@ -533,7 +623,41 @@ export function useGameRoom(): UseGameRoomReturn {
       }
     }
 
-    // 2. Fallback to API
+    // 2. Rematch via WebRTC PeerJS P2P
+    if (peerConnRef.current && peerConnRef.current.open) {
+      const isP1 = account.username === 'Ithal';
+      const nextStarter: PlayerSymbol = room.starter === 'X' ? 'O' : 'X';
+      const otherReady = isP1 ? room.p2_rematch_ready : room.p1_rematch_ready;
+
+      let updatedRoom: RoomRecord;
+      if (otherReady) {
+        updatedRoom = {
+          ...room,
+          board: ['', '', '', '', '', '', '', '', ''],
+          starter: nextStarter,
+          current_turn: nextStarter,
+          winner: null,
+          winning_line: null,
+          match_id: room.match_id + 1,
+          p1_rematch_ready: false,
+          p2_rematch_ready: false,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        updatedRoom = {
+          ...room,
+          p1_rematch_ready: isP1 ? true : room.p1_rematch_ready,
+          p2_rematch_ready: isP2 ? true : room.p2_rematch_ready,
+          updated_at: new Date().toISOString(),
+        };
+      }
+
+      handleRoomUpdate(updatedRoom);
+      peerConnRef.current.send({ type: 'REMATCH', room: updatedRoom });
+      return true;
+    }
+
+    // 3. Fallback to API
     try {
       const res = await fetch('/api/room/rematch', {
         method: 'POST',
@@ -576,7 +700,7 @@ export function useGameRoom(): UseGameRoomReturn {
 
     setMessages((prev) => [...prev, msg]);
 
-    // Broadcast through Supabase Channel
+    // 1. Broadcast through Supabase Channel
     const supabase = getSupabaseClient();
     if (supabase && channelRef.current) {
       try {
@@ -591,7 +715,17 @@ export function useGameRoom(): UseGameRoomReturn {
       }
     }
 
-    // Fallback to API
+    // 2. Chat via WebRTC PeerJS P2P
+    if (peerConnRef.current && peerConnRef.current.open) {
+      try {
+        peerConnRef.current.send({ type: 'CHAT', message: msg });
+        return true;
+      } catch (err) {
+        console.error('PeerJS chat error:', err);
+      }
+    }
+
+    // 3. Fallback to API
     try {
       const res = await fetch('/api/room/chat', {
         method: 'POST',
