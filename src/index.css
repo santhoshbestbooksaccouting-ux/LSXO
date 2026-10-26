@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #060814;
+    color: #f1f5f9;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+/* Custom glow and cell animations */
+.glow-cyan {
+  text-shadow: 0 0 16px rgba(56, 189, 248, 0.65), 0 0 32px rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
+}
+
+.glow-fuchsia {
+  text-shadow: 0 0 16px rgba(232, 121, 249, 0.65), 0 0 32px rgba(232, 121, 249, 0.3);
+  box-shadow: 0 0 20px rgba(232, 121, 249, 0.25);
+}
+
+.grid-board-cell {
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.grid-board-cell:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+@keyframes spinClockwise {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-clockwise {
+  animation: spinClockwise 12s linear infinite;
+}
+
+.animate-spin-clockwise-fast {
+  animation: spinClockwise 4s linear infinite;
+}
+
+.conic-clockwise-ring {
+  background: conic-gradient(from 0deg, #38bdf8, #e879f9, #6366f1, #38bdf8);
+}
+

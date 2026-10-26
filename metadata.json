@@ -1,0 +1,6 @@
+{
+  "name": "DuoXO - Private Real-Time Tic-Tac-Toe",
+  "description": "Private real-time 2-player Tic-Tac-Toe game for two friends with Supabase Realtime presence, state synchronization, and secure access.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
